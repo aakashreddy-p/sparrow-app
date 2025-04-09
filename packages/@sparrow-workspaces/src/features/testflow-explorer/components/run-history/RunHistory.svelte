@@ -66,7 +66,7 @@
               right:0;
               z-index:100;
               width: 320px; 
-              height: 562px;
+              height: 671px;
               background-color: var(--bg-ds-surface-700);
               border: 1px solid var(--border-ds-surface-100);
               border-radius: 8px;
