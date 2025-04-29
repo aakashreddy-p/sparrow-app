@@ -39,7 +39,7 @@
     value: string,
     index: number,
     blockName: string,
-  ) => void | undefined;
+  ) => any = () => [];
   export let handleDynamicNewExpression: (key: string, index: number) => void;
   export let handleRemoveDynamicExpressionKey: (
     key: string,

@@ -280,6 +280,7 @@
             <RequestBodyTestFlow
               body={selectedBlock?.data?.requestData?.body ?? {}}
               method={selectedBlock?.data?.method}
+              {selectedBlock}
               requestState={selectedBlock?.data?.requestData?.state}
               {environmentVariables}
               onUpdateRequestState={handleUpdateRequestData}

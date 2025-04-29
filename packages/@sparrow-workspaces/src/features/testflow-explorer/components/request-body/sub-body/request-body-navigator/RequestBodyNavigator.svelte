@@ -9,12 +9,21 @@
     requestBodySubTypes,
     requestBodyTypes,
   } from "../../../../../../../../@sparrow-common/src/utils/testFlow.helper";
+  import { MathFormulaRegular } from "@sparrow/library/icons";
+  import { Button } from "@sparrow/library/ui";
+  import {
+    addDynamicExpressionContent,
+    isDynamicExpressionContent,
+    isDynamicExpressionModalOpen,
+    requestBodyCursorPosition,
+  } from "../../../../store";
 
   export let method = "GET";
   export let onUpdateRequestState;
   export let onUpdateRequestBodyLanguage;
   export let updateBeautifiedState: (value: boolean) => void;
   export let requestState;
+  export let selectedBlock;
 
   let handleDropdown = (tab: string) => {
     onUpdateRequestState("requestBodyNavigation", tab);
@@ -24,8 +33,35 @@
     onUpdateRequestBodyLanguage("requestBodyLanguage", tab);
   };
 
+  const generateUniqueId = () => {
+    return "_" + Math.random().toString(36).substr(2, 9);
+  };
+
+  const createDynamicExpression = () => {
+    const currentCursor = $requestBodyCursorPosition.find(
+      (item) => item.blockName === selectedBlock?.data?.blockName,
+    );
+
+    addDynamicExpressionContent(
+      generateUniqueId(),
+      selectedBlock?.data?.blockName,
+      "body.raw",
+      "",
+      "",
+      "request",
+      0,
+      true,
+      currentCursor?.cursor,
+    );
+    $isDynamicExpressionModalOpen = true;
+  };
+
   let isDeleteMessage = true;
   let isGetMessage = true;
+  $: console.log(
+    "-----------------request body item",
+    $isDynamicExpressionContent,
+  );
 </script>
 
 <div>
@@ -78,7 +114,10 @@
     </div>
   {/if}
 </div>
-<div class="mb-2 d-flex align-items-center justify-content-between">
+<div
+  class="mb-2 d-flex align-items-center justify-content-between"
+  style="gap: 24px;"
+>
   <div class="d-flex" style="font-size: 12px;">
     <WithSelect
       id={"hash124"}
@@ -86,6 +125,7 @@
       titleId={requestState.requestBodyNavigation}
       onclick={handleDropdown}
       zIndex={499}
+      minHeaderWidth={"101px"}
       disabled={false}
     />
     <span class="pe-3" />
@@ -96,23 +136,38 @@
         titleId={requestState.requestBodyLanguage}
         onclick={handleRawDropDown}
         zIndex={499}
+        minHeaderWidth={"101px"}
         disabled={false}
       />
     {/if}
   </div>
-  <div>
-    {#if requestState.requestBodyNavigation === RequestDataset.RAW}
-      <div
-        on:click={() => {
-          updateBeautifiedState(true);
-          notifications.success("Code formatted successfully.");
+
+  <div class="d-flex justify-content-end gap-2">
+    <div class="d-flex">
+      <Button
+        size="small"
+        type="teritiary-regular"
+        title="Insert Dynamic Content"
+        startIcon={MathFormulaRegular}
+        onClick={() => {
+          createDynamicExpression();
         }}
-        role="button"
-        class="icon-container d-flex align-items-center justify-content-center border-radius-2"
-      >
-        <img src={BeautifyIcon} style="height:10px; width:10px;" />
-      </div>
-    {/if}
+      />
+    </div>
+    <div>
+      {#if requestState.requestBodyNavigation === RequestDataset.RAW}
+        <div
+          on:click={() => {
+            updateBeautifiedState(true);
+            notifications.success("Code formatted successfully.");
+          }}
+          role="button"
+          class="icon-container d-flex align-items-center justify-content-center border-radius-2"
+        >
+          <img src={BeautifyIcon} style="height:10px; width:10px;" />
+        </div>
+      {/if}
+    </div>
   </div>
 </div>
 

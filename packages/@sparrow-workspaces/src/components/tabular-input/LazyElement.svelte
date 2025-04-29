@@ -43,7 +43,7 @@
     value: string,
     index: number,
     blockName: string,
-  ) => void | undefined;
+  ) => any = () => [];
 
   export let handleDynamicNewExpression: (key: string, index: number) => void;
   export let handleRemoveDynamicExpressionKey: (
@@ -73,12 +73,17 @@
     handleRemoveDynamicExpression(element.key, index, id);
   };
 
-  let dynamicExpressionItems = getDEByKeyAndValue(
-    element?.key || "",
-    element?.value || "",
-    index,
-    blockName,
-  );
+  let dynamicExpressionItems: any = [];
+
+  if (typeof getDEByKeyAndValue === "function") {
+    dynamicExpressionItems =
+      getDEByKeyAndValue(
+        element?.key || "",
+        element?.value || "",
+        index,
+        blockName,
+      ) || [];
+  }
 
   isDynamicExpressionModalOpen.subscribe(() => {
     dynamicExpressionItems = getDEByKeyAndValue(

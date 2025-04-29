@@ -25,6 +25,8 @@
    */
   export let disabled;
 
+  export let minHeaderWidth = "160px";
+
   $: ({ id, data, titleId, onclick, zIndex, disabled } = $$props);
 </script>
 
@@ -42,5 +44,5 @@
   minBodyWidth={"150px"}
   variant={"secondary"}
   menuItem={"v2"}
-  minHeaderWidth={"160px"}
+  {minHeaderWidth}
 />
