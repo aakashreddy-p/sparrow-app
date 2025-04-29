@@ -38,21 +38,25 @@
   };
 
   const createDynamicExpression = () => {
-    const currentCursor = $requestBodyCursorPosition.find(
-      (item) => item.blockName === selectedBlock?.data?.blockName,
+    const currentCursor = $requestBodyCursorPosition;
+    const blockName = selectedBlock?.data?.blockName;
+    const matchingCursor = currentCursor.find(
+      (item) => item.blockName === blockName,
     );
+    const cursor = matchingCursor?.cursor ?? 0;
 
     addDynamicExpressionContent(
       generateUniqueId(),
-      selectedBlock?.data?.blockName,
+      blockName,
       "body.raw",
       "",
       "",
       "request",
       0,
       true,
-      currentCursor?.cursor,
+      cursor,
     );
+
     $isDynamicExpressionModalOpen = true;
   };
 
@@ -61,6 +65,7 @@
   $: console.log(
     "-----------------request body item",
     $isDynamicExpressionContent,
+    $requestBodyCursorPosition,
   );
 </script>
 

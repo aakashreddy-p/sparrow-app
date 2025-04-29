@@ -14,10 +14,46 @@
   export let selectedBlock;
 
   const handleCodeMirrorChange = (e: CustomEvent<string>) => {
-    // console.log("the value -------------------------->", e.detail);
-    // const updatedData = insertStringAtPosition(e.detail, 72, "[[hello]]");
-    onUpdateRequestBody(e.detail);
+    const originalValue = e.detail;
+
+    // Filter only valid dynamic expression items
+    const deItems = $isDynamicExpressionContent.filter(
+      (item) =>
+        item?.blockName === selectedBlock?.data?.blockName &&
+        item?.requestType === "body.raw" &&
+        item?.method === "request" &&
+        item?.value?.trim() !== "",
+    );
+
+    // Step 1: Clean the original string by removing ALL existing [[...]] patterns
+    const cleanedValue = originalValue.replace(/\[\[.*?\]\]/g, "");
+
+    // Step 2: Insert expressions at original cursor positions
+    let result = cleanedValue;
+
+    // Insert each valid dynamic expression
+    for (let item of deItems) {
+      const expression = `[[${item.value}]]`;
+      const cursor = item.cursor ?? 0;
+
+      // Avoid inserting if value is empty or cursor is out of bounds
+      if (item.value.trim() !== "" && cursor >= 0 && cursor <= result.length) {
+        result = insertStringAtPosition(result, cursor, expression);
+      }
+    }
+
+    onUpdateRequestBody(result);
   };
+
+  // Helper function to insert string at a position
+  function insertStringAtPosition(
+    str: string,
+    index: number,
+    insertStr: string,
+  ) {
+    if (index < 0 || index > str.length) return str;
+    return str.slice(0, index) + insertStr + str.slice(index);
+  }
 
   let dynamicExpressionItems = $isDynamicExpressionContent?.filter(
     (item: any) =>
