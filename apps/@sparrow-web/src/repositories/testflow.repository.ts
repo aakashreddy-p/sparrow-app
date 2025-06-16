@@ -60,6 +60,7 @@ export class TestflowRepository {
       if (data.name) value.name = data.name;
       if (data?.nodes) value.nodes = data.nodes;
       if (data?.edges) value.edges = data.edges;
+      if (data?.runHistory) value.runHistory = data.runHistory;
       if (data.workspaceId) value.workspaceId = data.workspaceId;
       if (data.updatedAt) value.updatedAt = data.updatedAt;
       if (data.updatedBy) value.updatedBy = data.updatedBy;

@@ -99,7 +99,7 @@ export class TestflowViewModel {
         },
       ],
       edges: [],
-
+      runHistory: [],
       workspaceId: currentWorkspace._id,
       createdAt: new Date().toISOString(),
       createdBy: "",

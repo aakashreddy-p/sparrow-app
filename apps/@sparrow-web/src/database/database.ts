@@ -399,6 +399,9 @@ export class RxDB {
             }
             return oldDoc;
           },
+          2: function (oldDoc: PlanDocument) {
+            return oldDoc;
+          },
         },
       },
       plan: {

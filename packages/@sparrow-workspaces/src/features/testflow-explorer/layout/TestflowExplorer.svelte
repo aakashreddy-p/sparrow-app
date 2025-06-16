@@ -1419,6 +1419,10 @@
     if (userRole) {
       planContent = planInfoByRole(userRole);
     }
+    console.log(
+      "this is the testflow data coming --------------->",
+      testflowStore,
+    );
   }
 </script>
 

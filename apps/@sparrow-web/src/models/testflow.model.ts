@@ -210,7 +210,7 @@ const TestflowSchemaLiteral = {
   title: "Testflow",
   primaryKey: "_id",
   type: "object",
-  version: 1,
+  version: 2,
   properties: {
     _id: {
       type: "string",
@@ -303,6 +303,65 @@ const TestflowSchemaLiteral = {
           },
         },
         required: ["id", "source", "target"],
+      },
+    },
+    runHistory: {
+      type: "array",
+      default: [],
+      items: {
+        type: "object",
+        properties: {
+          expand: {
+            type: "boolean",
+            default: false,
+          },
+          failedRequests: {
+            type: "string",
+          },
+          requests: {
+            type: "array",
+            default: [],
+            items: {
+              type: "object",
+              properties: {
+                method: {
+                  type: "string",
+                },
+                name: {
+                  type: "string",
+                },
+                status: {
+                  type: "string",
+                },
+                time: {
+                  type: "string",
+                },
+              },
+            },
+          },
+          status: {
+            type: "string",
+          },
+          successRequests: {
+            type: "number",
+          },
+          totalTime: {
+            type: "string",
+          },
+          createdAt: {
+            type: "string",
+          },
+          updatedAt: {
+            type: "string",
+          },
+          createdBy: {
+            type: "string",
+          },
+          updatedBy: {
+            type: "string",
+          },
+        },
+        required: ["failedRequests", "status", "successRequests", "totalTime"],
       },
     },
     createdAt: {
