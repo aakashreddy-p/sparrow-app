@@ -625,15 +625,8 @@
 </script>
 
 {#if isGlobalSearchOpen && !hideGlobalSearch}
-  <div
-    class="global-search-overlay"
-    transition:fade={{ duration: 300 }}
-    on:mousedown|self={closeGlobalSearch}
-  >
-    <div
-      class="global-search-container"
-      transition:fade={{ duration: 300, delay: 150 }}
-    >
+  <div class="global-search-overlay" on:mousedown|self={closeGlobalSearch}>
+    <div class="global-search-container">
       <GlobalSearch
         {isGuestUser}
         isWebApp={false}
@@ -863,6 +856,7 @@
     display: flex;
     justify-content: center;
     align-items: flex-start;
+    animation: fadeOverlay 120ms ease-out both;
     padding-top: 60px;
     z-index: 1000;
   }
@@ -871,5 +865,25 @@
     width: 100%;
     max-width: 600px;
     margin: 0 auto;
+    animation: smartPopup 240ms ease-out both;
+  }
+  @keyframes smartPopup {
+    0% {
+      transform: scale(0.8);
+      opacity: 0;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  @keyframes fadeOverlay {
+    0% {
+      opacity: 0;
+    }
+    100% {
+      opacity: 1;
+    }
   }
 </style>
