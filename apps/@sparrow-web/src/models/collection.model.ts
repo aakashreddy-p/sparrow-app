@@ -127,6 +127,30 @@ const websocketItems = {
     properties: params,
   },
 };
+
+const mockRequestResponseItems = {
+  responseBody: {
+    type: "array",
+    properties: requestBody,
+  },
+  selectedResponseBodyType: {
+    type: "string",
+  },
+  responseHeaders: {
+    type: "array",
+    properties: params,
+  },
+  responseStatus: {
+    type: "string",
+  },
+  isMockResponseActive: {
+    type: "boolean",
+  },
+  responseWeightRatio: {
+    type: "number",
+  },
+};
+
 const itemsProperties = {
   id: {
     type: "number",
@@ -158,6 +182,10 @@ const itemsProperties = {
     type: "object",
     properties: websocketItems,
   },
+  mockRequestResponse: {
+    type: "object",
+    properties: mockRequestResponseItems,
+  },
   createdAt: {
     type: "date-time",
   },
@@ -183,11 +211,59 @@ export const items = {
   },
 };
 
+export const authProfileItemProperties = {
+  authId: { type: "number" },
+  name: { type: "string" },
+  description: { type: "string" },
+  authType: {
+    type: "string",
+    enum: ["Basic Auth", "Bearer Token", "API Key"],
+  },
+  auth: {
+    type: "object",
+    properties: {
+      basicAuth: {
+        type: "object",
+        properties: {
+          username: { type: "string" },
+          password: { type: "string" },
+        },
+      },
+      bearerToken: { type: "string" },
+      apiKey: {
+        type: "object",
+        properties: {
+          authKey: { type: "string" },
+          authValue: { type: "string" },
+          addTo: {
+            type: "string",
+            enum: ["Header", "Query Parameter"],
+          },
+        },
+      },
+    },
+  },
+  defaultKey: { type: "boolean" },
+  createdAt: { type: "string", format: "date-time" },
+  updatedAt: { type: "string", format: "date-time" },
+  createdBy: { type: "string" },
+  updatedBy: { type: "string" },
+};
+
+export const authProfiles = {
+  type: "array",
+  default: [],
+  items: {
+    type: "object",
+    properties: authProfileItemProperties,
+  },
+};
+
 export const collectionSchemaLiteral = {
   title: "collection",
   primaryKey: "id",
   type: "object",
-  version: 5,
+  version: 8,
   properties: {
     collectionId: {
       type: "string",
@@ -279,6 +355,13 @@ export const collectionSchemaLiteral = {
         },
       },
     },
+    selectedAuthType: {
+      type: "string",
+    },
+    authProfiles,
+    defaultSelectedAuthProfile: {
+      type: "string",
+    },
     mockRequestHistory: {
       type: "array",
       default: [],
@@ -309,9 +392,6 @@ export const collectionSchemaLiteral = {
           responseBody: { type: "string" },
         },
       },
-    },
-    selectedAuthType: {
-      type: "string",
     },
     primaryBranch: { type: "string" },
     currentBranch: { type: "string" },

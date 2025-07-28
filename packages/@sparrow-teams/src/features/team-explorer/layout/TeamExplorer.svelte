@@ -11,11 +11,13 @@
   import { Button, Tag } from "@sparrow/library/ui";
   import { Navigator } from "@sparrow/library/ui";
   import { Avatar } from "@sparrow/library/ui";
+  import { WorkspaceType } from "@sparrow/common/enums";
   import {
     AddRegular,
     GlobeRegular,
     ListRegular,
     LockClosedRegular,
+    OpenRegular,
     PeopleRegular,
   } from "@sparrow/library/icons";
 
@@ -30,6 +32,7 @@
   import { Tooltip, Dropdown } from "@sparrow/library/ui";
   import { Search } from "@sparrow/library/forms";
   import InvitesView from "../../invited-users/layout/InvitesView.svelte";
+  import { open } from "@tauri-apps/plugin-shell";
   import { PlanUpgradeModal } from "@sparrow/common/components";
 
   export let isWebApp = false;
@@ -37,6 +40,8 @@
   export let isWebEnvironment: boolean;
   export let upgradePlanModalInvite: boolean;
   export let upgradePlanModal: boolean = false;
+
+  export let sparrowAdminUrl;
 
   /**
    * user ID
@@ -128,6 +133,7 @@
   export let contactOwner;
   export let handleRedirectAdminPanel;
   export let handleContactSales;
+  export let invitedCount;
 
   let selectedView: string = "Grid";
   let userRole: string;
@@ -311,6 +317,10 @@
     upgradePlanModalInvite = false;
   };
 
+  const handleRedirectToAdmin = async () => {
+    await handleRedirectAdminPanel();
+  };
+
   const handleRequestOwner = async () => {
     await contactOwner();
     upgradePlanModal = false;
@@ -350,7 +360,17 @@
                 class="ms-3 my-auto ellipsis overflow-hidden heading text-ds-font-size-28 text-ds-line-height-120 text-ds-font-weight-semi-bold"
                 >{openTeam?.name || ""}
               </span>
+
               {#if openTeam?.toMutableJSON()?.plan?.name}
+                <div
+                  class="ms-2 d-flex align-items-center gap-1 text-primary-400 cursor-pointer"
+                  on:click={handleRedirectToAdmin}
+                >
+                  <p class="text-fs-12 mb-0 pb-0">Launch Admin Panel</p>
+                  <OpenRegular />
+                </div>
+              {/if}
+              <!-- {#if openTeam?.toMutableJSON()?.plan?.name}
                 <span class="ps-2">
                   <Tag
                     type={"cyan"}
@@ -358,7 +378,7 @@
                       "Invalid Plan"}
                   />
                 </span>
-              {/if}
+              {/if} -->
               <!-- The leave team option will be availabe to only where you are invited team owner cannot leave the team -->
               {#if !isGuestUser && openTeam?.teamId !== "sharedWorkspaceTeam"}
                 {#if userRole !== "owner"}
@@ -477,7 +497,7 @@
         <div style="flex:1; overflow:auto;">
           {#if activeTeamTab === TeamTabsEnum.WORKSPACES}
             <div class="h-100 d-flex flex-column">
-              {#if openTeam && openTeam?.workspaces?.length > 0 && !isGuestUser}
+              {#if openTeam && !isGuestUser}
                 <div
                   class="d-flex align-items-center"
                   style="gap: 20px; justify-content:space-between; align-items:center;"
@@ -501,11 +521,11 @@
                     <span
                       role="button"
                       class={`d-flex rounded px-2 text-fs-12 py-1 btn-formatter align-items-center gap-1 filter-button ${
-                        selectedFilter === "Private"
+                        selectedFilter === WorkspaceType.PRIVATE
                           ? "bg-tertiary-500 text-secondary-100"
                           : ""
                       }`}
-                      on:click={() => (selectedFilter = "Private")}
+                      on:click={() => (selectedFilter = WorkspaceType.PRIVATE)}
                     >
                       <LockClosedRegular size="16px" />
                       Private
@@ -513,11 +533,11 @@
                     <span
                       role="button"
                       class={`d-flex rounded px-2 text-fs-12 py-1 btn-formatter align-items-center gap-1 filter-button ${
-                        selectedFilter === "Public"
+                        selectedFilter === WorkspaceType.PUBLIC
                           ? "bg-tertiary-500 text-secondary-100"
                           : ""
                       }`}
-                      on:click={() => (selectedFilter = "Public")}
+                      on:click={() => (selectedFilter = WorkspaceType.PUBLIC)}
                     >
                       <GlobeRegular size="16px" />
                       Public
@@ -553,6 +573,7 @@
                     }) || []}
                     {onSwitchWorkspace}
                     {onDeleteWorkspace}
+                    {selectedFilter}
                     isAdminOrOwner={userRole === TeamRole.TEAM_ADMIN ||
                       userRole === TeamRole.TEAM_OWNER}
                   />
@@ -674,7 +695,7 @@
               title="Accept"
               onClick={async () => {
                 isInviteAcceptProgress = true;
-                await onAcceptInvite(openTeam?.teamId);
+                await onAcceptInvite(openTeam?.teamId, userId);
                 isInviteAcceptProgress = false;
               }}
               loader={isInviteAcceptProgress}
@@ -713,7 +734,7 @@
     ? handleRedirectToAdminPanel
     : handleRequestOwner}
   userName={openTeam?._data?.name?.split(" ")[0]}
-  userEmail={openTeam?._data?.users[0]?.email || ""}
+  userEmail={openTeam?._data?.users?.[0]?.email || ""}
   submitButtonName={planContent?.buttonName}
 />
 
@@ -722,8 +743,11 @@
   title={planContent?.title}
   description={planContent?.description}
   planType="Collaborators"
-  planLimitValue={userLimits?.usersPerHub?.value + 1 || 5}
-  currentPlanValue={openTeam?._data?.users.length - 1 || 5}
+  planLimitValue={userLimits?.usersPerHub?.value || 5}
+  currentPlanValue={invitedCount +
+    (openTeam?._data?.invites?.length || 0) +
+    (openTeam?._data?.users?.length || 0) -
+    1}
   isOwner={userRole === TeamRole.TEAM_OWNER || userRole === TeamRole.TEAM_ADMIN
     ? true
     : false}
@@ -733,7 +757,7 @@
     ? handleRedirectToAdminPanel
     : handleRequestOwner}
   userName={openTeam?._data?.name?.split(" ")[0]}
-  userEmail={openTeam?._data?.users[0]?.email || ""}
+  userEmail={openTeam?._data?.users?.[0]?.email || ""}
   submitButtonName={planContent?.buttonName}
 />
 
@@ -772,10 +796,10 @@
       brightness(103%) contrast(104%);
   }
   .team-title {
-    width: calc(100% - 370px);
+    width: calc(100% - 470px);
   }
   .heading {
-    max-width: calc(100% - 150px);
+    max-width: calc(100% - 250px);
   }
   .cursor-pointer {
     cursor: pointer;

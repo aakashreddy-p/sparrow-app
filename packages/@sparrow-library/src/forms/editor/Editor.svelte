@@ -25,8 +25,15 @@
   } from "@sparrow/common/utils";
   import MergeView from "./MergeView.svelte";
 
-  export let lang: "HTML" | "JSON" | "XML" | "JavaScript" | "Text" | "Graphql" =
-    "Text";
+  export let lang:
+    | "HTML"
+    | "JSON"
+    | "XML"
+    | "JavaScript"
+    | "Text"
+    | "Graphql"
+    | "Python"
+    | "Curl" = "Text";
   export let value = "";
   export let customSuggestions = false;
   export let isEnterKeyNotAllowed = false;
@@ -303,11 +310,16 @@
       CreatePlaceHolder(placeholder),
     ];
 
+    // Removing window style space(\r\n) to find correct cursor position
+    let sanitizedValue = value?.includes("\r\n")
+      ? value.replace(/\r\n/g, "\n")
+      : value;
+
     let state = EditorState.create({
       doc: value,
       extensions: extensions,
       selection: autofocus
-        ? { anchor: value.length, head: value.length }
+        ? { anchor: sanitizedValue.length, head: sanitizedValue.length }
         : { anchor: 0, head: 0 },
     });
 
@@ -361,6 +373,10 @@
   afterUpdate(() => {
     // Handling the mergeview state while component state changes
     if (!isMergeViewEnabled && value !== codeMirrorView.state.doc.toString()) {
+      let sanitizedValue = value?.includes("\r\n")
+        ? value.replace(/\r\n/g, "\n")
+        : value;
+
       codeMirrorView.dispatch({
         changes: {
           from: 0,
@@ -368,7 +384,7 @@
           insert: value,
         },
         selection: autofocus
-          ? { anchor: value.length, head: value.length }
+          ? { anchor: sanitizedValue.length, head: sanitizedValue.length }
           : { anchor: 0, head: 0 },
         annotations: [{ autoChange: true }],
       });

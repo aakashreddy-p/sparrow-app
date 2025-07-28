@@ -4,7 +4,7 @@ import {
   ReduceQueryParams,
   DecodeSocketio,
 } from "@sparrow/workspaces/features/socketio-explorer/utils";
-import { createDeepCopy, moveNavigation } from "@sparrow/common/utils";
+import { createDeepCopy, scrollToTab } from "@sparrow/common/utils";
 import {
   startLoading,
   stopLoading,
@@ -322,7 +322,7 @@ class SocketIoExplorerPageViewModel {
     this.tab = progressiveTab;
     try {
       await this.tabRepository.updateTab(progressiveTab.tabId, progressiveTab);
-    } catch (error) { 
+    } catch (error) {
       notifications.error(
         "Failed to update the documentation. Please try again",
       );
@@ -764,7 +764,7 @@ class SocketIoExplorerPageViewModel {
         description: socketMetaData.description,
         type: CollectionItemTypeBaseEnum.SOCKETIO,
         socketio: unadaptedSocket,
-        updatedAt: "",
+        updatedAt: new Date().toISOString(),
         updatedBy: "Guest User",
       };
 
@@ -992,7 +992,7 @@ class SocketIoExplorerPageViewModel {
             initWebSocketTab.updateHeaders(req.socketio.headers);
 
             this.tabRepository.createTab(initWebSocketTab.getValue());
-            moveNavigation("right");
+            scrollToTab("");
           }
           return {
             status: "success",
@@ -1063,7 +1063,7 @@ class SocketIoExplorerPageViewModel {
             initSocketTab.updateHeaders(res.data.data.socketio.headers);
 
             this.tabRepository.createTab(initSocketTab.getValue());
-            moveNavigation("right");
+            scrollToTab("");
           }
           return {
             status: "success",
@@ -1127,7 +1127,7 @@ class SocketIoExplorerPageViewModel {
             initSocketTab.updateQueryParams(req.socketio.queryParams);
             initSocketTab.updateHeaders(req.socketio.headers);
             this.tabRepository.createTab(initSocketTab.getValue());
-            moveNavigation("right");
+            scrollToTab("");
           }
           return {
             status: "success",
@@ -1195,7 +1195,7 @@ class SocketIoExplorerPageViewModel {
             initSocketTab.updateQueryParams(res.data.data.socketio.queryParams);
             initSocketTab.updateHeaders(res.data.data.socketio.headers);
             this.tabRepository.createTab(initSocketTab.getValue());
-            moveNavigation("right");
+            scrollToTab("");
           }
           return {
             status: "success",

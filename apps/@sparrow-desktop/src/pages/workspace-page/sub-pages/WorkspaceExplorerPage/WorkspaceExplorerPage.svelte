@@ -44,6 +44,8 @@
   let isShareModalOpen = false;
   let isFailedPublishedModalOpen = false;
   let upgradePlanModalInvite: boolean = false;
+  let currrentInvites: number;
+  let invitedCount: number = 0;
 
   const workspaceUpdatesList: Observable<UpdatesDocType[]> =
     _viewModel.getWorkspaceUpdatesList(workspaceID);
@@ -59,7 +61,8 @@
   }
   let userId = "";
   let userRole = "";
-  user.subscribe((value) => {
+  let isSharedWorkspace = false;
+  const userSubscriber = user.subscribe((value) => {
     if (value) {
       userId = value._id;
     }
@@ -100,6 +103,8 @@
         };
         findUserRole();
         currentTeam = await _viewModel.readTeam(currentTeamDetails.id);
+        currrentInvites = currentTeam?._data?.invites?.length || 0;
+        isSharedWorkspace = value._data.isShared;
         workspaceType = value._data?.workspaceType || "PRIVATE";
       }
     },
@@ -122,6 +127,7 @@
     data: addUsersInWorkspacePayload,
     invitedUserCount: number,
   ) => {
+    invitedCount = invitedUserCount;
     const response = await _viewModel.inviteUserToWorkspace(
       workspaceId,
       workspaceName,
@@ -150,15 +156,18 @@
   };
 
   const planLimits = async () => {
+    let response;
     if (teamDetails?.teamId) {
-      await _viewModel.userPlanLimits(teamDetails?.teamId);
+      response = await _viewModel.userPlanLimits(teamDetails?.teamId);
     }
+    return response;
   };
   // $:{
   //   if(userId )
   // }
   onDestroy(() => {
     activeWorkspaceSubscribe.unsubscribe();
+    userSubscriber();
   });
   onMount(async () => {
     await _viewModel.fetchWorkspaceUpdates(workspaceID);
@@ -170,7 +179,9 @@
   bind:userRole
   bind:isShareModalOpen
   bind:upgradePlanModalInvite
+  bind:invitedCount
   tab={_viewModel.tab}
+  {isSharedWorkspace}
   {workspaceUpdatesList}
   {workspaceType}
   collectionLength={$collectionList?.filter(
@@ -192,6 +203,9 @@
   handleContactSales={_viewModel.handleContactSales}
   {planLimits}
   {teamDetails}
+  bind:currrentInvites
+  activeWorkspace={$activeWorkspace}
+  onClickHubUrl={_viewModel.handleHubTabCreation}
 />
 
 <Modal
@@ -211,6 +225,7 @@
     currentWorkspaceDetails={currentWorkspace}
     users={currentTeam?.users}
     teamName={currentTeam?.name}
+    plan={currentTeam?.plan}
     onInviteUserToWorkspace={handleInviteWorkspace}
   />
 </Modal>

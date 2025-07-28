@@ -13,6 +13,7 @@
   export let onCopyLink;
   let cardType = "marketplace";
   export let workspaceList: WorkspaceDocument[] = [];
+  export let onSwitchWorkspace;
   export let isWebEnvironment;
   export let onSearchWorkspaces = (name: string, page?: number) => {};
   export let isInitialDataLoading;
@@ -120,7 +121,7 @@
       >
         <div class="d-flex" style="padding:4px; gap: 4px;">
           <CartRegular size="24px" />
-          <span>MarketPlace</span>
+          <span>Marketplace</span>
         </div>
       </div>
       <div class="d-flex mx-auto">
@@ -173,7 +174,7 @@
             {#each workspaceList as workspace}
               <WorkspaceGrid
                 {workspace}
-                onSwitchWorkspace={() => {}}
+                {onSwitchWorkspace}
                 {onCopyLink}
                 {isWebEnvironment}
                 {cardType}

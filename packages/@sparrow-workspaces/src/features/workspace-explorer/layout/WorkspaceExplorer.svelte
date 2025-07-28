@@ -14,6 +14,7 @@
   import { SparrowOutlineIcon } from "@sparrow/common/icons";
   import { planInfoByRole } from "@sparrow/common/utils";
   import { PlanUpgradeModal } from "@sparrow/common/components";
+  import { onMount } from "svelte";
 
   /**
    * The length of collections related to the workspace.
@@ -74,6 +75,7 @@
   export let activeWorkspace;
 
   export let isShareModalOpen;
+  export let currrentInvites;
 
   export let upgradePlanModalInvite: boolean = false;
   export let handleRedirectAdminPanel: () => void;
@@ -94,6 +96,8 @@
   export let isSharedWorkspace = false;
   export let onMakeWorkspacePublic;
   export let onShareWorkspace;
+  export let onClickHubUrl;
+  export let invitedCount = 0;
 
   const formateUpdateTime = (dateString: string) => {
     const date = new Date(dateString);
@@ -124,12 +128,12 @@
     userLimits = data;
   };
 
-  $: {
+  onMount(() => {
     getPlanLimits();
     if (userRole) {
       planContent = planInfoByRole(userRole);
     }
-  }
+  });
 </script>
 
 {#if isSharedWorkspace && workspaceType === WorkspaceType.PUBLIC}
@@ -168,6 +172,12 @@
             type={"link-primary"}
             size="small"
             buttonClassProp="ps-0 pe-1"
+            onClick={() => {
+              onClickHubUrl(
+                activeWorkspace?.team?.teamId,
+                currentWorkspace?.id,
+              );
+            }}
           />
         </div>
         <hr style="color: var(--border-ds-surface-50); margin-top:0" />
@@ -195,7 +205,9 @@
             class="text-ds-font-size-14 text-ds-font-weight-regular text-ds-line-height-143"
             style="width: 60%;"
           >
-            {activeWorkspace?.description}
+            {activeWorkspace?.description
+              ? activeWorkspace.description
+              : "No summary added."}
           </p>
         </div>
         <div class="background-icon">
@@ -265,8 +277,11 @@
   title={planContent?.title}
   description={planContent?.description}
   planType="Collaborators"
-  planLimitValue={userLimits?.usersPerHub?.value + 1 || 5}
-  currentPlanValue={activeWorkspace?._data?.users.length - 1 || 1}
+  planLimitValue={userLimits?.usersPerHub?.value}
+  currentPlanValue={invitedCount +
+    currrentInvites +
+    (currentWorkspace?.users?.length || 0) -
+    1}
   isOwner={userRole === TeamRole.TEAM_OWNER || userRole === TeamRole.TEAM_ADMIN
     ? true
     : false}
@@ -283,7 +298,7 @@
 <style>
   .background-icon {
     position: absolute;
-    top: 120%;
+    top: 140%;
     left: 50%;
     opacity: 0.04;
     transform: translate(-50%, -50%);

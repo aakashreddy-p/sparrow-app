@@ -10,7 +10,7 @@ import { TestflowService } from "../../services/testflow.service";
 import { GuestUserRepository } from "../../repositories/guest-user.repository";
 import { type Tab } from "@sparrow/common/types/workspace/tab";
 
-import { createDeepCopy, moveNavigation } from "@sparrow/common/utils";
+import { createDeepCopy, scrollToTab } from "@sparrow/common/utils";
 import {
   currentStep,
   isFirstTimeInTestFlow,
@@ -18,6 +18,7 @@ import {
 } from "@sparrow/workspaces/stores";
 import constants from "@app/constants/constants";
 import { TestflowTabAdapter } from "@app/adapter";
+import { WorkspaceType } from "@sparrow/common/enums";
 
 export class TestflowViewModel {
   private workspaceRepository = new WorkspaceRepository();
@@ -164,7 +165,7 @@ export class TestflowViewModel {
         workspaceId: currentWorkspace._id,
       });
       // scroll the top tab bar to right
-      moveNavigation("right");
+      scrollToTab("");
       notifications.success("New Testflow created successfully.");
       // MixpanelEvent(Events.CREATE_TESTFLOW);
       let isFirstTimeUsingTestFlow = false;
@@ -337,42 +338,67 @@ export class TestflowViewModel {
     const guestUser = await this.guestUserRepository.findOne({
       name: "guestUser",
     });
+
     const isGuestUser = guestUser?.getLatest().toMutableJSON().isGuestUser;
     if (isGuestUser) {
       return {};
     }
+
     const baseUrl = await this.constructBaseUrl(workspaceId);
-    const response = await this.testflowService.fetchAllTestflow(
-      workspaceId,
-      baseUrl,
-    );
-    if (response?.isSuccessful && response?.data?.data) {
-      const testflows = response.data.data;
-      await this.testflowRepository.refreshTestflow(
-        testflows?.map((_testflow: any) => {
-          const testflow = createDeepCopy(_testflow);
-          testflow["workspaceId"] = workspaceId;
-          return testflow;
-        }),
-      );
-      await this.testflowRepository.deleteOrphanTestflows(
+    const workspaceData =
+      await this.workspaceRepository.readWorkspace(workspaceId);
+
+    let response;
+    if (
+      workspaceData &&
+      workspaceData.workspaceType === WorkspaceType.PUBLIC &&
+      workspaceData.isShared
+    ) {
+      response = await this.testflowService.fetchAllPublicTestflow(
         workspaceId,
-        testflows?.map((_testflow: any) => {
-          return _testflow._id;
-        }),
+        constants.API_URL,
       );
-      const testflowTabsToBeDeleted =
-        await this.tabRepository.getIdOfTabsThatDoesntExistAtTestflowLevel(
-          workspaceId,
-          testflows?.map((_testflow: any) => {
-            return _testflow._id;
-          }),
-        );
-      return {
-        testflowTabsToBeDeleted,
-      };
+    } else {
+      response = await this.testflowService.fetchAllTestflow(
+        workspaceId,
+        baseUrl,
+      );
     }
-    return {};
+
+    if (!response?.isSuccessful || !response?.data?.data) {
+      return {};
+    }
+
+    const testflows = response.data.data;
+    const testflowsWithWorkspaceId: any[] = [];
+    const testflowIds: string[] = [];
+
+    // ✅ Process in chunks to avoid blocking UI
+    const chunkSize = 100;
+    for (let i = 0; i < testflows.length; i += chunkSize) {
+      const chunk = testflows.slice(i, i + chunkSize);
+      for (const tf of chunk) {
+        const copy = createDeepCopy(tf);
+        copy.workspaceId = workspaceId;
+        testflowsWithWorkspaceId.push(copy);
+        testflowIds.push(tf._id);
+      }
+      await new Promise((res) => setTimeout(res)); // Yield to UI
+    }
+
+    await this.testflowRepository.refreshTestflow(testflowsWithWorkspaceId);
+    await this.testflowRepository.deleteOrphanTestflows(
+      workspaceId,
+      testflowIds,
+    );
+
+    const testflowTabsToBeDeleted =
+      await this.tabRepository.getIdOfTabsThatDoesntExistAtTestflowLevel(
+        workspaceId,
+        testflowIds,
+      );
+
+    return { testflowTabsToBeDeleted };
   };
 
   /**

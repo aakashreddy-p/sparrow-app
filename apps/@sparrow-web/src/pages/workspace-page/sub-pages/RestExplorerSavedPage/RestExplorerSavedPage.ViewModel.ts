@@ -6,7 +6,7 @@ import {
   ReduceAuthHeader,
   ReduceAuthParameter,
 } from "@sparrow/workspaces/features/rest-explorer/utils";
-import { createDeepCopy, moveNavigation } from "@sparrow/common/utils";
+import { createDeepCopy, scrollToTab } from "@sparrow/common/utils";
 import {
   CompareArray,
   Debounce,
@@ -599,7 +599,7 @@ export class RestExplorerSavedViewModel {
     initRequestTab.updateIsSave(false);
     MixpanelEvent(Events.TRY_RESPONSE);
     this.tabRepository.createTab(initRequestTab.getValue());
-    moveNavigation("right");
+    scrollToTab("");
   };
 
   /**
@@ -885,6 +885,7 @@ export class RestExplorerSavedViewModel {
             requestResponse: {
               selectedResponseBodyType: responeBodyType,
             },
+            updatedAt: new Date().toISOString(),
           },
         );
       } else {
@@ -897,6 +898,7 @@ export class RestExplorerSavedViewModel {
             requestResponse: {
               selectedResponseBodyType: responeBodyType,
             },
+            updatedAt: new Date().toISOString(),
           },
         );
       }
@@ -1601,6 +1603,7 @@ export class RestExplorerSavedViewModel {
     const response = await this.aiAssistentService.generateAiResponse({
       text: prompt,
       instructions: `You are an AI Assistant to generate documentation, responsible to generate documentation for API requests, Give response only in text format not in markdown.`,
+      model: "deepseek",
     });
     if (response.isSuccessful) {
       const formatter = new MarkdownFormatter();

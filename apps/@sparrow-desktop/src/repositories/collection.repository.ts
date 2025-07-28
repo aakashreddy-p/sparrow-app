@@ -6,6 +6,7 @@ import type { Observable } from "rxjs";
 import type { CollectionItemsDto } from "@sparrow/common/types/workspace";
 import type { RxDocument } from "rxdb";
 import * as Sentry from "@sentry/svelte";
+import type { CollectionAuthProifleBaseInterface as AuthProfileDto} from "@sparrow/common/types/workspace/collection-base";
 export class CollectionRepository {
   constructor() {}
 
@@ -57,6 +58,9 @@ export class CollectionRepository {
         value.localRepositoryPath = data.localRepositoryPath;
       if (data.mockRequestHistory)
         value.mockRequestHistory = data.mockRequestHistory;
+      if (data.authProfiles) value.authProfiles = data.authProfiles;
+      if (data.defaultSelectedAuthProfile)
+        value.defaultSelectedAuthProfile = data.defaultSelectedAuthProfile;
       return value;
     });
 
@@ -480,6 +484,197 @@ export class CollectionRepository {
       }
       return element;
     });
+    await collection.incrementalModify((value) => {
+      value.items = [...updatedItems];
+      return value;
+    });
+  };
+
+  public updateMockResponseRatiosInCollection = async (
+    collectionId: string,
+    requestId: string,
+    mockResponseRatios: Array<{
+      mockResponseId: string;
+      responseWeightRatio: number;
+    }>,
+  ): Promise<void> => {
+    const collection = await RxDB.getInstance()
+      .rxdb.collection.findOne({ selector: { id: collectionId } })
+      .exec();
+
+    if (!collection) {
+      console.error(`Collection not found: ${collectionId}`);
+      return;
+    }
+
+    const items = createDeepCopy(collection.items);
+
+    const updatedItems = items.map((request) => {
+      if (request.id === requestId) {
+        if (request.items && Array.isArray(request.items)) {
+          // Update each response that matches an ID in the mockResponseRatios array
+          request.items = request.items.map((item) => {
+            const ratioUpdate = mockResponseRatios.find(
+              (ratio) => ratio.mockResponseId === item.id,
+            );
+            if (ratioUpdate) {
+              return {
+                ...item,
+                mockRequestResponse: {
+                  ...(item.mockRequestResponse || {}),
+                  responseWeightRatio: ratioUpdate.responseWeightRatio,
+                },
+              };
+            }
+            return item;
+          });
+        }
+      }
+      return request;
+    });
+    await collection.incrementalModify((value) => {
+      value.items = [...updatedItems];
+      return value;
+    });
+  };
+
+  /**
+   * Updates mock response ratios in a folder
+   * @param collectionId - ID of the collection
+   * @param folderId - ID of the folder
+   * @param requestId - ID of the request
+   * @param mockResponseRatios - Array of mockResponseId and responseWeightRatio pairs
+   */
+  public updateMockResponseRatiosInFolder = async (
+    collectionId: string,
+    folderId: string,
+    requestId: string,
+    mockResponseRatios: Array<{
+      mockResponseId: string;
+      responseWeightRatio: number;
+    }>,
+  ): Promise<void> => {
+    const collection = await RxDB.getInstance()
+      .rxdb.collection.findOne({ selector: { id: collectionId } })
+      .exec();
+
+    if (!collection) {
+      console.error(`Collection not found: ${collectionId}`);
+      return;
+    }
+
+    const items = createDeepCopy(collection.items);
+    const updatedItems = items.map((folder) => {
+      if (folder.id === folderId) {
+        if (folder.items && Array.isArray(folder.items)) {
+          folder.items = folder.items.map((request) => {
+            if (request.id === requestId) {
+              if (request.items && Array.isArray(request.items)) {
+                request.items = request.items.map((item) => {
+                  const ratioUpdate = mockResponseRatios.find(
+                    (ratio) => ratio.mockResponseId === item.id,
+                  );
+
+                  if (ratioUpdate) {
+                    return {
+                      ...item,
+                      mockRequestResponse: {
+                        ...(item.mockRequestResponse || {}),
+                        responseWeightRatio: ratioUpdate.responseWeightRatio,
+                      },
+                    };
+                  }
+
+                  return item;
+                });
+              }
+            }
+            return request;
+          });
+        }
+      }
+      return folder;
+    });
+
+    await collection.incrementalModify((value) => {
+      value.items = [...updatedItems];
+      return value;
+    });
+  };
+
+  // Updates a mock response inside a request at the collection root
+  public updateMockResponseInCollection = async (
+    collectionId: string,
+    requestId: string,
+    mockResponseId: string,
+    updatedMockResponse: any,
+  ): Promise<void> => {
+    const collection = await RxDB.getInstance()
+      .rxdb.collection.findOne({ selector: { id: collectionId } })
+      .exec();
+    const items = createDeepCopy(collection.items);
+
+    const updatedItems = items.map((request) => {
+      if (request.id === requestId) {
+        for (let i = 0; i < request.items.length; i++) {
+          if (request.items[i].id === mockResponseId) {
+            request.items[i] = {
+              ...request.items[i],
+              ...updatedMockResponse,
+              mockRequestResponse: {
+                ...(request.items[i].mockRequestResponse || {}),
+                ...(updatedMockResponse?.mockRequestResponse || {}),
+              },
+            };
+            break;
+          }
+        }
+      }
+      return request;
+    });
+
+    await collection.incrementalModify((value) => {
+      value.items = [...updatedItems];
+      return value;
+    });
+  };
+
+  // Updates a mock response inside a request within a folder
+  public updateMockResponseInFolder = async (
+    collectionId: string,
+    folderId: string,
+    requestId: string,
+    mockResponseId: string,
+    updatedMockResponse: any,
+  ): Promise<void> => {
+    const collection = await RxDB.getInstance()
+      .rxdb.collection.findOne({ selector: { id: collectionId } })
+      .exec();
+    const items = createDeepCopy(collection.items);
+
+    const updatedItems = items.map((folder) => {
+      if (folder.id === folderId) {
+        folder.items?.forEach((request) => {
+          if (request.id === requestId) {
+            for (let i = 0; i < request.items.length; i++) {
+              if (request.items[i].id === mockResponseId) {
+                request.items[i] = {
+                  ...request.items[i],
+                  ...updatedMockResponse,
+                  mockRequestResponse: {
+                    ...(request.items[i].mockRequestResponse || {}),
+                    ...(updatedMockResponse?.mockRequestResponse || {}),
+                  },
+                };
+                break;
+              }
+            }
+          }
+        });
+      }
+      return folder;
+    });
+
     await collection.incrementalModify((value) => {
       value.items = [...updatedItems];
       return value;
@@ -941,5 +1136,128 @@ export class CollectionRepository {
       );
 
     return node ?? null;
+  };
+
+  /* Remove collections by multiple workspaceIds
+   * @param _workspaceIds - Single workspaceId or array of workspaceIds to filter collections
+   * @returns Promise resolving to the result of the removal operation
+   */
+  public removeCollectionsByWorkspaceIds = async (
+    _workspaceIds: string[],
+  ): Promise<any> => {
+    return await RxDB.getInstance()
+      .rxdb?.collection.find({
+        selector: {
+          workspaceId: {
+            $in: _workspaceIds,
+          },
+        },
+      })
+      .remove();
+  };
+
+  /**
+   * @description
+   * read auth profile within a collection.
+   */
+  public readAuthProfilesInCollection = async (
+    collectionId: string,
+    uuid: string,
+  ): Promise<CollectionItemsDto | undefined> => {
+    const collection = await RxDB.getInstance()
+      .rxdb.collection.findOne({
+        selector: {
+          id: collectionId,
+        },
+      })
+      .exec();
+    let response;
+    collection?.toJSON().authProfiles.forEach((element) => {
+      if (element.authId === uuid) {
+        response = element;
+        return;
+      }
+    });
+    return response;
+  };
+
+  /**
+   * @description
+   * Creates an API request or folder within a collection.
+   */
+  public addAuthProfile = async (
+    collectionId: string,
+    newAuthProfileItem: AuthProfileDto,
+  ) => {
+    const collection = await RxDB.getInstance()
+      .rxdb.collection.findOne({
+        selector: {
+          id: collectionId,
+        },
+      })
+      .exec();
+    await collection.incrementalPatch({
+      authProfiles: [...collection?.authProfiles, newAuthProfileItem],
+    });
+  };
+
+  public updateAuthProfile = async (
+    collectionId: string,
+    uuid: string,
+    newAuthProfileItem: AuthProfileDto,
+  ) => {
+    const collection = await RxDB.getInstance()
+      .rxdb.collection.findOne({
+        selector: {
+          id: collectionId,
+        },
+      })
+      .exec();
+
+    const updatedAuths = collection.toJSON().authProfiles.map((element) => {
+      // If the new auth profile is set as default, unset the previous default
+      if (
+        element.defaultKey &&
+        newAuthProfileItem.defaultKey &&
+        element.authId.toString() !== uuid
+      ) {
+        element.defaultKey = false; // Unset previous default
+      }
+
+      if (element.authId.toString() === uuid) {
+        element = {
+          ...element,
+          ...newAuthProfileItem,
+        };
+      }
+      return element;
+    });
+    await collection.incrementalModify((value) => {
+      value.authProfiles = [...updatedAuths];
+      if (newAuthProfileItem.defaultKey) {
+        value.defaultSelectedAuthProfile = newAuthProfileItem.authId;
+      }
+      return value;
+    });
+  };
+
+  public deleteAuthProfile = async (collectionId: string, deleteId: string) => {
+    const collection = await RxDB.getInstance()
+      .rxdb.collection.findOne({
+        selector: {
+          id: collectionId,
+        },
+      })
+      .exec();
+    const updatedAuths = collection.toJSON().authProfiles.filter((element) => {
+      if (element.authId !== deleteId) {
+        return true;
+      }
+      return false;
+    });
+    collection.incrementalModify((value) => {
+      value.authProfiles = [...updatedAuths];
+      return value;
+    });
   };
 }

@@ -860,11 +860,15 @@ const waitForAbort = (signal: AbortSignal): Promise<never> => {
       return reject(new Error("Aborted before starting"));
     }
 
-    signal?.addEventListener("abort", () => {
+    signal?.addEventListener(
+      "abort",
+      () => {
         reject(new Error("Aborted during request"));
-    }, { once: true });
+      },
+      { once: true },
+    );
   });
-}
+};
 
 /**
  * Invoke RPC Communication
@@ -888,13 +892,16 @@ const makeHttpRequestV2 = async (
   const startTime = performance.now();
 
   try {
-    const data = await Promise.race([invoke("make_http_request_v2", {
+    const data = await Promise.race([
+      invoke("make_http_request_v2", {
         url,
         method,
         headers,
         body,
         request,
-    }), waitForAbort(signal)])
+      }),
+      waitForAbort(signal),
+    ]);
     // Handle the response and update UI accordingly
     if (signal?.aborted) {
       throw new Error(); // Ignore response if request was cancelled

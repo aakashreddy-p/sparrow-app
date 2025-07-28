@@ -6,6 +6,7 @@ import {
   copyToClipBoard,
   createDeepCopy,
   Debounce,
+  scrollToTab,
   throttle,
 } from "@sparrow/common/utils";
 import type {
@@ -31,6 +32,7 @@ import {
   type Tab,
 } from "@sparrow/common/types/workspace/tab";
 import constants from "src/constants/constants";
+import { InitHubTab } from "@sparrow/common/utils";
 import { PlanRepository } from "src/repositories/plan.repository";
 import { TeamService } from "src/services/team.service";
 
@@ -330,15 +332,17 @@ export default class WorkspaceExplorerViewModel {
       const newTeam = response.data.data.users;
       this.workspaceRepository.addUserInWorkspace(_workspaceId, newTeam);
       notifications.success(
-        `Invite sent to ${_invitedUserCount} people for ${_workspaceName}.`,
+        `Invite sent to ${_invitedUserCount} ${
+          _invitedUserCount === 1 ? "person" : "people"
+        } for ${_workspaceName}.`,
       );
     } else {
-      if (response?.message === "Plan limit reached") {
-        // notifications.error(
-        //   "You’ve reached the collaborator limit for your current plan. Upgrade to add more collaborators.",
-        // );
-      } else {
-        notifications.error(`Failed to send invite. Please try again.`);
+        if (response?.message === "Plan limit reached") {
+            // notifications.error("Failed to send invite. please upgrade your plan.");
+          } else {
+        notifications.error(
+          response?.message || "Failed to send invite. Please try again.",
+        );
       }
     }
     if (_data.role === WorkspaceRole.WORKSPACE_VIEWER) {
@@ -599,6 +603,18 @@ export default class WorkspaceExplorerViewModel {
     notifications.success("Link copied to clipboard.");
   };
 
+  public handleHubTabCreation = async (teamId: string, workspaceId: string) => {
+    const team = await this.teamService.fetchPublicTeam(teamId);
+    if (team.isSuccessful && team?.data?.data) {
+      const teamData = team.data.data;
+      const hubTab = new InitHubTab(teamData._id, workspaceId);
+      hubTab.updateName(teamData.name);
+      hubTab.updateDescription(teamData.description);
+      hubTab.updateHubProperty(teamData);
+      await this.tabRepository.createTab(hubTab.getValue());
+      scrollToTab("");
+    }
+  };
   /**
    * @description - This function will provide user Limits based on teamId.
    */
@@ -606,10 +622,7 @@ export default class WorkspaceExplorerViewModel {
     const teamDetails = await this.teamRepository.getTeamDoc(teamId);
     const currentPlan = teamDetails?.toMutableJSON().plan;
     if (currentPlan) {
-      const planLimits = await this.planRepository.getPlan(
-        currentPlan?.id.toString(),
-      );
-      return planLimits?.toMutableJSON()?.limits;
+      return currentPlan?.limits;
     }
   };
 

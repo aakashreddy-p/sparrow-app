@@ -25,7 +25,10 @@
   import { pagesMotion } from "../../constants";
   import { version } from "../../../package.json";
   import { CreateTeam } from "@sparrow/common/features";
-  import { LaunchDesktop } from "@sparrow/common/components";
+  import {
+    GithubStarRedirect,
+    LaunchDesktop,
+  } from "@sparrow/common/components";
 
   const _viewModel = new TeamsViewModel();
   const teamList: Observable<TeamDocument[]> = _viewModel.teams;
@@ -41,7 +44,7 @@
   let workspaces: Observable<WorkspaceDocument[]> = _viewModel.workspaces;
   const openTeam: Observable<TeamDocument> = _viewModel.openTeam;
   const activeTeamTab: Observable<string> = _viewModel.activeTeamTab;
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { Motion } from "svelte-motion";
   import { isUserFirstSignUp } from "src/store/user.store";
   import { user } from "src/store/auth.store";
@@ -51,6 +54,7 @@
     ChevronDoubleRightRegular,
     DoubleArrowIcon,
     GithubIcon,
+    SparkleRegular,
   } from "@sparrow/library/icons";
   import { ListTeamNavigation } from "@sparrow/teams/features";
   import { TeamTabsEnum } from "@sparrow/teams/constants/TeamTabs.constants";
@@ -60,6 +64,7 @@
   import { WelcomePopUpWeb } from "@sparrow/common/components";
   import type { GithubRepoDocType } from "src/models/github-repo.model";
   import { DownloadApp } from "@sparrow/common/features";
+  import { shouldRunThrottled } from "@sparrow/common/store";
 
   let githubRepoData: GithubRepoDocType;
   let isGuestUser = false;
@@ -67,15 +72,22 @@
   const externalSparrowGithub = constants.SPARROW_GITHUB;
 
   let userId = "";
-  user.subscribe(async (value) => {
+  const userSubscriber = user.subscribe(async (value) => {
     if (value) {
       userId = value._id;
     }
   });
+  let isTrialExhausted: boolean | undefined = undefined;
 
   onMount(async () => {
-    _viewModel.refreshTeams(userId);
-    _viewModel.refreshWorkspaces(userId);
+    if (userId && shouldRunThrottled(userId)) {
+      await Promise.all([
+        _viewModel.refreshTeams(userId),
+        _viewModel.refreshWorkspaces(userId),
+      ]);
+    } else {
+      console.error(`Throttled for ${userId}`);
+    }
 
     let githubRepo = await _viewModel.getGithubRepo();
     githubRepoData = githubRepo?.getLatest().toMutableJSON();
@@ -85,7 +97,12 @@
     githubRepo = await _viewModel.getGithubRepo();
     githubRepoData = githubRepo?.getLatest().toMutableJSON();
     isGuestUser = await _viewModel.getGuestUser();
+    isTrialExhausted = await _viewModel.getUserTrialExhaustedStatus();
   });
+
+  const startTrial = async () => {
+    await _viewModel.handleStartTrial();
+  };
 
   let splitter: HTMLElement | null;
 
@@ -103,7 +120,7 @@
   }
 
   let isWelcomePopupOpen = false;
-  isUserFirstSignUp.subscribe((value) => {
+  const isUserFirstSignUpSubscriber = isUserFirstSignUp.subscribe((value) => {
     if (value) {
       isWelcomePopupOpen = value;
     }
@@ -136,13 +153,19 @@
   };
 
   let openTeamData: TeamDocType;
-  openTeam.subscribe((_team) => {
+  const openTeamSubscriber = openTeam.subscribe((_team) => {
     if (_team) {
       const teamJSON = _team?.toMutableJSON();
       setTimeout(() => {
         openTeamData = teamJSON;
       }, 0);
     }
+  });
+
+  onDestroy(() => {
+    openTeamSubscriber.unsubscribe();
+    userSubscriber();
+    isUserFirstSignUpSubscriber();
   });
 
   let isPopupOpen = false;
@@ -225,31 +248,47 @@
             </div>
 
             <!-- github repo section -->
-            <section class="px-2">
+            <section class="d-flex p-2 flex-column">
+              {#if !isGuestUser && isTrialExhausted == false}
+                <div class="d-flex flex-column" style="gap: 12px">
+                  <div class="d-flex align-items-start" style="gap: 4px">
+                    <div>
+                      <SparkleRegular />
+                    </div>
+                    <div class="d-flex flex-column text-ds-font-size-12">
+                      <div style="color: var(--text-ds-neutral-50);">
+                        Unlock trial Access
+                      </div>
+                      <div style="color: var(--text-ds-neutral-200);">
+                        Unlock advanced features for 14 days, no charges until
+                        trial ends.
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    title="Start Free Trial"
+                    size="medium"
+                    type="outline-primary"
+                    onClick={startTrial}
+                    disable={false}
+                    loader={false}
+                  />
+                </div>
+                <div
+                  style="border-bottom: 1px solid var(--bg-ds-surface-100); margin: 8px 0 0 0;"
+                ></div>
+              {/if}
               <div
                 class="p-2 d-flex align-items-center justify-content-between"
                 style="z-index: 4;"
               >
                 <Tooltip title={"Star Us On GitHub"} placement={"top-center"}>
-                  <div
-                    tabindex="0"
-                    class="githubStar py-1 border-radius-2 d-flex align-items-center"
-                    on:click={async () => {
+                  <GithubStarRedirect
+                    onClick={async () => {
                       await open(externalSparrowGithub);
                     }}
-                  >
-                    <GithubIcon
-                      height={"18px"}
-                      width={"18px"}
-                      color="var(--bg-ds-neutral-50)"
-                    />
-
-                    <span
-                      class="text-ds-font-size-12 text-ds-line-height-130 text-ds-font-weight-medium"
-                    >
-                      {githubRepoData?.stargazers_count || ""}
-                    </span>
-                  </div>
+                    count={githubRepoData?.stargazers_count || ""}
+                  />
                 </Tooltip>
 
                 <div class="d-flex align-items-center">
@@ -343,36 +382,6 @@
 </Modal>
 
 <style>
-  .githubStar {
-    background-color: transparent;
-    height: 28px;
-    gap: 4px;
-    padding: 4px;
-    padding-right: 8px;
-    color: var(--bg-ds-neutral-100);
-  }
-  .githubStar:hover {
-    border-radius: 4px;
-    background-color: var(--bg-ds-surface-300);
-    color: var(--bg-ds-neutral-100);
-  }
-  .githubStar:active {
-    color: var(--bg-ds-primary-300);
-    background-color: var(--bg-ds-surface-400);
-    border-radius: 4px;
-  }
-  .githubStar:focus-visible {
-    color: var(--text-ds-neutral-50);
-    border-radius: 4px;
-    outline: none;
-    border: 2px solid var(--border-ds-primary-300);
-  }
-  .warning-text {
-    color: var(--colors-neutral-text-3, #ccc);
-    font-size: 14px;
-    font-weight: 400;
-    line-height: 150%;
-  }
   :global(.team-splitter .splitpanes__splitter) {
     width: 6px !important;
     height: auto !important;

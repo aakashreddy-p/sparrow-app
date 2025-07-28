@@ -11,17 +11,13 @@ export const moveNavigation = (direction: string) => {
   if (direction === "left") {
     sideScroll(navigation, "left", 25, 100, 50);
   } else {
-    let count = 0;
-    let scroll = setInterval(() => {
-      count++;
-      if (count === 5){
-        clearInterval(scroll)
-      } 
+    // Add a small delay to ensure DOM is updated
+    setTimeout(() => {
       navigation?.scrollTo({
-        left : navigation.scrollWidth,
-        behavior : "smooth",
-      })
-    }, 50)
+        left: navigation.scrollWidth,
+        behavior: "smooth",
+      });
+    }, 500);
   }
 };
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -48,3 +44,20 @@ const sideScroll = (
   }, speed);
 };
 
+/**
+ * Scrolls the tab bar so that the tab with the given request id is visible.
+ * @param requestId The id of the request tab to scroll into view.
+ */
+export const scrollToTab = (requestId: string) => {
+  const navigation = document.getElementById("tab-scroller");
+  const tabElement = document.getElementById(requestId);
+  if (navigation && tabElement) {
+    tabElement.scrollIntoView({
+      behavior: "smooth",
+      inline: "nearest",
+      block: "nearest",
+    });
+  } else {
+    moveNavigation("right");
+  }
+};

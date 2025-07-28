@@ -9,19 +9,23 @@ import { WorkspaceRepository } from "../../repositories/workspace.repository";
 import { CollectionRepository } from "../../repositories/collection.repository";
 import { GithubRepoReposistory } from "../../repositories/github-repo.repository";
 import { GithubService } from "../../services/github.service";
-import { moveNavigation } from "@sparrow/common/utils";
+import { scrollToTab } from "@sparrow/common/utils";
 import { navigate } from "svelte-navigator";
 import { GuestUserRepository } from "../../repositories/guest-user.repository";
 import type { HttpClientResponseInterface } from "@app/types/http-client";
 import type { Team } from "@sparrow/common/interfaces";
 import { UserService } from "../../services/user.service";
 import MixpanelEvent from "@app/utils/mixpanel/MixpanelEvent";
-import { Events } from "@sparrow/common/enums";
+import { Events, planType } from "@sparrow/common/enums";
 import { BehaviorSubject, Observable } from "rxjs";
 import { WorkspaceService } from "../../services/workspace.service";
+import { EnvironmentRepository } from "src/repositories/environment.repository";
+import { TestflowRepository } from "src/repositories/testflow.repository";
 import { PlanRepository } from "src/repositories/plan.repository";
 import { PlanService } from "src/services/plan.service";
 import constants from "src/constants/constants";
+import { planBannerisOpen } from "@sparrow/common/store";
+import { getClientUser } from "src/utils/jwt";
 
 export class TeamsViewModel {
   constructor() {}
@@ -38,6 +42,8 @@ export class TeamsViewModel {
 
   private collectionRepository = new CollectionRepository();
   private userService = new UserService();
+  private environmentRepository = new EnvironmentRepository();
+  private testflowRepository = new TestflowRepository();
   private _activeTeamTab: BehaviorSubject<string> = new BehaviorSubject(
     "Workspaces",
   );
@@ -118,6 +124,7 @@ export class TeamsViewModel {
           updatedBy,
           isNewInvite,
           invites,
+          billing,
         } = elem;
         const updatedWorkspaces = workspaces?.map((workspace) => ({
           workspaceId: workspace.id,
@@ -147,60 +154,11 @@ export class TeamsViewModel {
           isNewInvite,
           isOpen: isOpenTeam,
           invites,
+          billing,
         };
         data.push(item);
       }
-      const planResponse = await this.planService.getPlansByIds(userPlans);
 
-      const parsedPlans = [];
-      if (response.isSuccessful && planResponse.data.data) {
-        for (const planData of planResponse.data.data) {
-          const rawData = planData;
-          if (!rawData?._id) continue;
-          const planDetails = {
-            planId: rawData._id,
-            name: rawData.name,
-            description: rawData.description,
-            active: rawData.active,
-            limits: {
-              workspacesPerHub: {
-                area: rawData.limits.workspacesPerHub.area,
-                value: rawData.limits.workspacesPerHub.value,
-              },
-              testflowPerWorkspace: {
-                area: rawData.limits.testflowPerWorkspace.area,
-                value: rawData.limits.testflowPerWorkspace.value,
-              },
-              usersPerHub: {
-                area: rawData.limits.usersPerHub.area,
-                value: rawData.limits.usersPerHub.value,
-              },
-              blocksPerTestflow: {
-                area: rawData.limits.blocksPerTestflow.area,
-                value: rawData.limits.blocksPerTestflow.value,
-              },
-              selectiveTestflowRun: {
-                area: rawData.limits.selectiveTestflowRun.area,
-                active: rawData.limits.selectiveTestflowRun.active,
-              },
-              activeSync: {
-                area: rawData.limits.activeSync.area,
-                active: rawData.limits.activeSync.active,
-              },
-              testflowRunHistory: {
-                area: rawData.limits.testflowRunHistory.area,
-                value: rawData.limits.testflowRunHistory.value,
-              },
-            },
-            createdAt: rawData.createdAt,
-            updatedAt: rawData.updatedAt,
-            createdBy: rawData.createdBy,
-            updatedBy: rawData.updatedBy,
-          };
-          parsedPlans.push(planDetails);
-        }
-        await this.planRepository.upsertMany(parsedPlans);
-      }
       await this.teamRepository.bulkInsertData(data);
       await this.teamRepository.deleteOrphanTeams(
         data.map((_team) => {
@@ -269,16 +227,35 @@ export class TeamsViewModel {
         data.push(item);
       }
       await this.workspaceRepository.bulkInsertData(data);
-      await this.workspaceRepository.deleteOrphanWorkspaces(
-        data.map((_workspace) => {
-          return _workspace._id;
-        }),
-      );
+      const selectedWorkspacesToBeDeleted =
+        await this.workspaceRepository.deleteOrphanWorkspaces(
+          data.map((_workspace) => {
+            return _workspace._id;
+          }),
+        );
+
+      if (selectedWorkspacesToBeDeleted?.length > 0) {
+        await this.collectionRepository.removeCollectionsByWorkspaceIds(
+          selectedWorkspacesToBeDeleted,
+        );
+        await this.environmentRepository.removeEnvironmentsByWorkspaceIds(
+          selectedWorkspacesToBeDeleted,
+        );
+        await this.testflowRepository.removeTestflowsByWorkspaceIds(
+          selectedWorkspacesToBeDeleted,
+        );
+      }
       const sharedWorkspce =
         await this.workspaceRepository.findWorkspaceByTeamId(
           "sharedWorkspaceTeam",
         );
-      if (!isAnyWorkspaceActive && !sharedWorkspce) {
+      const isSharedWorkspaceActive =
+        await this.workspaceRepository.getSharedPublicActiveWorkspace();
+      if (
+        !isAnyWorkspaceActive &&
+        !sharedWorkspce &&
+        !isSharedWorkspaceActive
+      ) {
         this.workspaceRepository.setActiveWorkspace(data[0]._id);
         return;
       }
@@ -313,17 +290,15 @@ export class TeamsViewModel {
     if (response?.isSuccessful && response?.data?.data) {
       const teamAdapter = new TeamAdapter();
       const adaptedTeam = teamAdapter.adapt(response.data.data).getValue();
+
       await this.teamRepository.insert(adaptedTeam);
       await this.teamRepository.setOpenTeam(response.data.data?._id);
       notifications.success(`New hub ${team.name} is created.`);
-    } else {
-      if (response?.message === "Plan limit reached") {
-        notifications.error(
-          "You’ve reached the limit of private hub on your current plan. Upgrade to create more private hubs",
-        );
-      } else {
-        notifications.error("Failed to create hub. Please try again.");
+      if (response?.data?.data.plan?.name === planType.COMMUNITY) {
+        planBannerisOpen.set(true);
       }
+    } else {
+      notifications.error("Failed to create hub. Please try again.");
     }
     MixpanelEvent(Events.CREATE_NEW_TEAM);
     return response;
@@ -369,6 +344,10 @@ export class TeamsViewModel {
    */
   public setOpenTeam = async (id: string) => {
     await this.teamRepository.setOpenTeam(id);
+    const team = await this.teamRepository.getTeamDoc(id);
+    if (team._data.plan?.name !== planType.COMMUNITY) {
+      planBannerisOpen.set(false);
+    }
   };
 
   /**
@@ -393,7 +372,7 @@ export class TeamsViewModel {
       );
       await this.teamRepository.removeTeam("sharedWorkspaceTeam");
     }
-    moveNavigation("right");
+    scrollToTab("");
     navigate("collections");
   };
 
@@ -488,5 +467,33 @@ export class TeamsViewModel {
     const isSparrowEdge = isGuestUser ? "&isSparrowEdge=true" : "";
     const sparrowRedirect = `sparrow://?accessToken=${accessToken}&refreshToken=${refreshToken}&event=login&method=email${isSparrowEdge}`;
     window.location.href = sparrowRedirect;
+  };
+
+  public getUserTrialExhaustedStatus = async (): Promise<boolean> => {
+    const response = await this.guestUserRepository.findOne({
+      name: "guestUser",
+    });
+    const isGuestUser = response?.getLatest().toMutableJSON().isGuestUser;
+    if (isGuestUser) return false;
+    try {
+      const email = getClientUser().email;
+      const response =
+        await this.userService.getUserTrialExhaustedStatus(email);
+      return response?.data?.data?.isUserTrialExhausted ?? false;
+    } catch (error) {
+      console.error("Error fetching trial exhausted status:", error);
+      return false;
+    }
+  };
+
+  public handleStartTrial = () => {
+    debugger;
+    const email = getClientUser().email;
+    const accessToken = localStorage.getItem("AUTH_TOKEN");
+    const refreshToken = localStorage.getItem("REF_TOKEN");
+    const url =
+      constants.ADMIN_URL +
+      `?accessToken=${accessToken}&refreshToken=${refreshToken}&email=${email}&source=web&trial=login_trial`;
+    window.open(url, "_blank");
   };
 }

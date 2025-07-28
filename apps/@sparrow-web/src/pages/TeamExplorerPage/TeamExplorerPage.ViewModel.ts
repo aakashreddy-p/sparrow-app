@@ -1,7 +1,12 @@
 import { user } from "@app/store/auth.store";
 import type { addUsersInWorkspacePayload } from "@sparrow/common/dto";
 import type { InviteBody } from "@sparrow/common/dto/team-dto";
-import { Events, UntrackedItems, WorkspaceRole } from "@sparrow/common/enums";
+import {
+  Events,
+  ResponseMessage,
+  UntrackedItems,
+  WorkspaceRole,
+} from "@sparrow/common/enums";
 import type { HttpClientResponseInterface } from "@app/types/http-client";
 import MixpanelEvent from "@app/utils/mixpanel/MixpanelEvent";
 import type { WorkspaceDocument } from "../../database/database";
@@ -22,6 +27,7 @@ import { getClientUser } from "../../utils/jwt";
 import { WorkspaceTabAdapter } from "src/adapter";
 import constants from "src/constants/constants";
 import { Sleep } from "@sparrow/common/utils";
+import { RecentWorkspaceRepository } from "src/repositories/recent-workspace.repository";
 import { PlanRepository } from "src/repositories/plan.repository";
 
 export class TeamExplorerPageViewModel {
@@ -35,6 +41,7 @@ export class TeamExplorerPageViewModel {
   private teamService = new TeamService();
   private guestUserRepository = new GuestUserRepository();
   private userService = new UserService();
+  private recentWorkspaceRepository = new RecentWorkspaceRepository();
   private planRepository = new PlanRepository();
 
   private _activeTeamTab: BehaviorSubject<string> = new BehaviorSubject(
@@ -404,6 +411,71 @@ export class TeamExplorerPageViewModel {
     }
     // Disabling the switching of workspace in web
     navigate("collections");
+    // Update the recent workspace repository
+    const existingRecentWorkspace =
+      await this.recentWorkspaceRepository.readWorkspace(id);
+    if (!existingRecentWorkspace) {
+      const {
+        _id,
+        name,
+        description,
+        workspaceType,
+        team,
+        createdAt,
+        createdBy,
+        updatedAt,
+        updatedBy,
+      } = res;
+      const recentWorkspaceItem = {
+        _id,
+        name,
+        description,
+        workspaceType,
+        isShared: false,
+        team: {
+          teamId: team?.teamId,
+          teamName: team?.teamName || "",
+          hubUrl: team?.hubUrl || "",
+        },
+        lastVisited: new Date().toISOString(),
+        createdAt,
+        createdBy,
+        updatedAt,
+        updatedBy,
+      };
+      await this.recentWorkspaceRepository.addRecentWorkspace(
+        recentWorkspaceItem,
+      );
+      // Limit public workspaces to 6 most recently visited
+      await this.limitPrivateWorkspaces(6);
+    }
+  };
+
+  private limitPrivateWorkspaces = async (maxCount: number): Promise<void> => {
+    // Get all public workspaces sorted by lastVisited
+    const allPublicWorkspaces =
+      await this.recentWorkspaceRepository.getRecentWorkspacesDocs();
+    const publicWorkspaces = allPublicWorkspaces.filter(
+      (workspace) => workspace.workspaceType === "PRIVATE",
+    );
+
+    // If we have more than the max count, remove the oldest ones
+    if (publicWorkspaces.length > maxCount) {
+      // Sort by lastVisited (most recent first)
+      const sortedWorkspaces = publicWorkspaces.sort((a, b) => {
+        const dateA = a.lastVisited ? new Date(a.lastVisited).getTime() : 0;
+        const dateB = b.lastVisited ? new Date(b.lastVisited).getTime() : 0;
+        return dateB - dateA;
+      });
+
+      // Get the workspaces to remove (oldest ones)
+      const workspacesToRemove = sortedWorkspaces.slice(maxCount);
+
+      // Delete each workspace that exceeds our limit
+      for (const workspace of workspacesToRemove) {
+        await this.recentWorkspaceRepository.deleteWorkspace(workspace._id);
+      }
+    }
   };
 
   /**
@@ -429,7 +501,9 @@ export class TeamExplorerPageViewModel {
       await this.refreshWorkspaces(_userId);
       await this.teamRepository.modifyTeam(_teamId, responseData);
       notifications.success(
-        `Invite sent to ${_inviteBody.users.length} people for ${_teamName}.`,
+        `Invite sent to ${_inviteBody.users.length}  ${
+          _inviteBody.users.length === 1 ? "person" : "people"
+        } for ${_teamName}.`,
       );
     } else {
       if (response?.message === "Plan limit reached") {
@@ -879,14 +953,23 @@ export class TeamExplorerPageViewModel {
       _data,
       baseUrl,
     );
-    if (response?.data?.data) {
+    if (response?.isSuccessful && response?.data?.data) {
       const newTeam = response.data.data.users;
       this.workspaceRepository.addUserInWorkspace(_workspaceId, newTeam);
       notifications.success(
-        `Invite sent to ${_invitedUserCount} people for ${_workspaceName}.`,
+        `Invite sent to ${_invitedUserCount} ${
+          _invitedUserCount === 1 ? "person" : "people"
+        } for ${_workspaceName}.`,
       );
-    } else {
-      notifications.error(`Failed to sent invite. Please try again.`);
+    }
+    else{
+        if (response?.message === "Plan limit reached") {
+        // notifications.error("Failed to send invite. please upgrade your plan.");
+      } else {
+        notifications.error(
+          response?.message || "Failed to send invite. Please try again.",
+        );
+      }
     }
     if (_data.role === WorkspaceRole.WORKSPACE_VIEWER) {
       MixpanelEvent(Events.Invite_To_Workspace_Viewer, {
@@ -917,8 +1000,10 @@ export class TeamExplorerPageViewModel {
     );
     if (response.isSuccessful) {
       this.teamRepository.modifyTeam(teamId, response.data.data);
-      notifications.success(`Invite resent successfully!`);
+      notifications.success(`Invite resent successfully.`);
       return response;
+    } else if (response?.data?.message === ResponseMessage.INVITE_DECLINED) {
+      notifications.error(`The invite has been declined by Collaborator.`);
     } else {
       notifications.error("Failed to resend invite. Please try again.");
     }
@@ -933,26 +1018,25 @@ export class TeamExplorerPageViewModel {
     );
     if (response?.isSuccessful) {
       this.teamRepository.modifyTeam(teamId, response.data.data);
-      notifications.success(`Invite withdrawn successfully!`);
+      notifications.success(`Invite withdrawn successfully.`);
       return response;
     } else {
       notifications.error("Failed to withdraw invite. Please try again.");
     }
   };
 
-  public acceptInvite = async (teamId: string) => {
+  public acceptInvite = async (teamId: string, userId: string) => {
     const baseUrl = await this.constructBaseUrl(teamId);
     const response = await this.teamService.acceptInvite(teamId, baseUrl);
     if (response.isSuccessful) {
       this.teamRepository.modifyTeam(teamId, response.data.data);
+      await this.refreshWorkspaces(userId);
       notifications.success(
         `You are now a member ${response?.data?.data.name} Hub.`,
       );
       return response;
     } else {
-      notifications.error(
-        `Failed to join the ${response?.data?.data.name} Hub. Please try again.`,
-      );
+      notifications.error(`Failed to join the Hub. Please try again.`);
     }
   };
 
@@ -961,7 +1045,13 @@ export class TeamExplorerPageViewModel {
     const response = await this.teamService.ignoreInvite(teamId, baseUrl);
     if (response.isSuccessful) {
       const teams = await this.teamRepository.getTeamsDocuments();
-      await this.teamRepository.setOpenTeam(teams[0].toMutableJSON().teamId);
+      const team0 = teams[0]?.toMutableJSON();
+      const team1 = teams[1]?.toMutableJSON();
+      if (team0?.teamId !== teamId) {
+        await this.teamRepository.setOpenTeam(team0.teamId);
+      } else if (team1) {
+        await this.teamRepository.setOpenTeam(team1.teamId);
+      }
       await this.teamRepository.removeTeam(teamId);
       notifications.success(
         `Invite ignored. The hub has been removed from your panel.`,
@@ -974,12 +1064,9 @@ export class TeamExplorerPageViewModel {
 
   public userPlanLimits = async (teamId: string) => {
     const teamDetails = await this.teamRepository.getTeamDoc(teamId);
-    const currentPlan = teamDetails?._data?.plan;
+    const currentPlan = teamDetails?.toMutableJSON()?.plan;
     if (currentPlan) {
-      const planLimits = await this.planRepository.getPlan(
-        currentPlan?.id.toString(),
-      );
-      return planLimits?._data?.limits;
+      return currentPlan?.limits;
     }
   };
 

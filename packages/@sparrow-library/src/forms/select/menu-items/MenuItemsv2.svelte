@@ -114,7 +114,7 @@
   on:mouseup={() => {
     isMenuItemClicked = false;
   }}
-  class="d-flex px-2 py-2 justify-content-between highlight border-radius-2 select-option-container {extractHeaderHighlight(
+  class="d-flex px-2 py-2 justify-content-between align-items-center highlight border-radius-2 select-option-container {extractHeaderHighlight(
     variant,
     isMenuItemHover,
     isMenuItemClicked,
@@ -122,11 +122,12 @@
   tabindex="0"
 >
   {#if list.icon}
-    <div class="me-2">
+    <div class="me-2 mt-1">
       <svelte:component
         this={list.icon}
         {...list.iconProps}
         class="menu-icon"
+        size="16px"
       />
     </div>
   {/if}

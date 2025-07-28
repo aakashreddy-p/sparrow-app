@@ -19,6 +19,7 @@
   import { copyToClipBoard } from "@sparrow/common/utils";
   import type { InviteBody } from "@sparrow/common/dto/team-dto";
   import { ResponseMessage } from "@sparrow/common/enums";
+  import type { addUsersInWorkspacePayload } from "@sparrow/common/dto";
 
   export let activeTeamTab;
   export let onUpdateActiveTab;
@@ -40,7 +41,7 @@
   const OnleaveTeam = _viewModel.leaveTeam;
   let userId = "";
   let userRole = "";
-  user.subscribe(async (value) => {
+  const userSubscriber = user.subscribe(async (value) => {
     if (value) {
       userId = value._id;
     }
@@ -49,6 +50,7 @@
   let currentTeam = {
     name: "",
     users: [],
+    plan: {},
   };
   let currentWorkspace = {
     id: "",
@@ -69,7 +71,7 @@
     });
   };
 
-  const activeWorkspaceSubscribe = activeWorkspace.subscribe(
+  const activeWorkspaceSubscriber = activeWorkspace.subscribe(
     async (value: WorkspaceDocument) => {
       if (value?._data) {
         currentWorkspace = {
@@ -85,10 +87,11 @@
   );
   let isWorkspaceOpen = false;
 
-  activeTeam.subscribe((value) => {
+  const activeTeamSubscriber = activeTeam.subscribe((value) => {
     if (value) {
       currentTeam.name = value.name;
       currentTeam.users = value.users;
+      currentTeam.plan = value.plan;
       usersInvitePlanCount = value?._data?.users?.length || 5;
       isWorkspaceOpen = false;
     }
@@ -96,6 +99,7 @@
 
   let isTeamInviteModalOpen = false;
   let isLeaveTeamModelOpen = false;
+  let invitedCount = 0;
   let isGuestUser;
 
   const handleDeleteWorkspace = (workspace: WorkspaceDocument) => {
@@ -109,6 +113,7 @@
     inviteBody: InviteBody,
     userId: string,
   ) => {
+    invitedCount = inviteBody?.users.length;
     const response = await _viewModel.handleTeamInvite(
       teamId,
       teamName,
@@ -173,7 +178,9 @@
   }
 
   onDestroy(() => {
-    activeWorkspaceSubscribe.unsubscribe();
+    activeWorkspaceSubscriber.unsubscribe();
+    activeTeamSubscriber.unsubscribe();
+    userSubscriber();
   });
 
   const handleCopyPublicWorkspaceLink = async (workspaceId: string) => {
@@ -201,6 +208,26 @@
     if (response?.data?.message === ResponseMessage.PLAN_LIMIT_MESSAGE) {
       upgradePlanModal = true;
     }
+  };
+
+  const handleAddWorkspace = async (
+    workspaceId: string,
+    workspaceName: string,
+    data: addUsersInWorkspacePayload,
+    invitedUserCount: number,
+  ) => {
+    invitedCount = invitedUserCount;
+    const response = await _viewModel.inviteUserToWorkspace(
+      workspaceId,
+      workspaceName,
+      data,
+      invitedUserCount,
+    );
+    if (response?.data.message === ResponseMessage.PLAN_LIMIT_MESSAGE) {
+      isWorkspaceInviteModalOpen = false;
+      upgradePlanModalInvite = true;
+    }
+    return response;
   };
 </script>
 
@@ -257,6 +284,7 @@
     bind:isLeaveTeamModelOpen
     bind:upgradePlanModalInvite
     bind:upgradePlanModal
+    bind:invitedCount
     onAddMember={handleWorkspaceDetails}
     openTeam={$activeTeam}
     workspaces={$workspaces}
@@ -307,6 +335,7 @@
     teamName={$activeTeam?.name}
     users={$activeTeam?.users}
     teamId={$activeTeam?.teamId}
+    plan={$activeTeam?.plan}
     workspaces={$workspaces.filter((elem) => {
       return elem?.team?.teamId === $activeTeam?.teamId;
     })}
@@ -377,9 +406,10 @@
     handleInvitePopup={(flag = false) => {
       isWorkspaceInviteModalOpen = flag;
     }}
-    currentWorkspaceDetails={currentWorkspace}
+    currentWorkspaceDetails={workspaceDetails}
     users={currentTeam?.users}
     teamName={currentTeam?.name}
-    onInviteUserToWorkspace={_viewModel.inviteUserToWorkspace}
+    plan={currentTeam?.plan}
+    onInviteUserToWorkspace={handleAddWorkspace}
   />
 </Modal>

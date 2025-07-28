@@ -4,7 +4,7 @@ import {
   ReduceQueryParams,
   DecodeWebsocket,
 } from "@sparrow/workspaces/features/socket-explorer/utils";
-import { createDeepCopy, moveNavigation } from "@sparrow/common/utils";
+import { createDeepCopy, scrollToTab } from "@sparrow/common/utils";
 import {
   startLoading,
   stopLoading,
@@ -272,7 +272,7 @@ class RestExplorerViewModel {
     this.tab = progressiveTab;
     try {
       await this.tabRepository.updateTab(progressiveTab.tabId, progressiveTab);
-    } catch (error) { 
+    } catch (error) {
       notifications.error(
         "Failed to update the documentation. Please try again",
       );
@@ -701,7 +701,7 @@ class RestExplorerViewModel {
         description: socketMetaData.description,
         type: ItemType.WEB_SOCKET,
         websocket: unadaptedSocket,
-        updatedAt: "",
+        updatedAt: new Date().toISOString(),
         updatedBy: "Guest User",
       };
 
@@ -924,7 +924,7 @@ class RestExplorerViewModel {
             initWebSocketTab.updateHeaders(req.websocket.headers);
 
             this.tabRepository.createTab(initWebSocketTab.getValue());
-            moveNavigation("right");
+            scrollToTab("");
           }
           return {
             status: "success",
@@ -997,7 +997,7 @@ class RestExplorerViewModel {
             initSocketTab.updateHeaders(res.data.data.websocket.headers);
 
             this.tabRepository.createTab(initSocketTab.getValue());
-            moveNavigation("right");
+            scrollToTab("");
           }
           return {
             status: "success",
@@ -1061,7 +1061,7 @@ class RestExplorerViewModel {
             initSocketTab.updateQueryParams(req.websocket.queryParams);
             initSocketTab.updateHeaders(req.websocket.headers);
             this.tabRepository.createTab(initSocketTab.getValue());
-            moveNavigation("right");
+            scrollToTab("");
           }
           return {
             status: "success",
@@ -1131,7 +1131,7 @@ class RestExplorerViewModel {
             );
             initSocketTab.updateHeaders(res.data.data.websocket.headers);
             this.tabRepository.createTab(initSocketTab.getValue());
-            moveNavigation("right");
+            scrollToTab("");
           }
           return {
             status: "success",

@@ -4,7 +4,7 @@ import { environmentType } from "@sparrow/common/enums";
 import {
   createDeepCopy,
   InitRequestTab,
-  moveNavigation,
+  scrollToTab,
 } from "@sparrow/common/utils";
 import { RequestTabAdapter, TestflowTabAdapter } from "../../../../adapter";
 import type {
@@ -42,7 +42,7 @@ import type {
 } from "@sparrow/common/types/workspace/testflow";
 import { CompareArray, Debounce, ParseTime } from "@sparrow/common/utils";
 import { notifications } from "@sparrow/library/ui";
-import { DecodeRequest } from "@sparrow/workspaces/features/rest-explorer/utils";
+import { ReduceAuthHeader } from "@sparrow/workspaces/features/rest-explorer/utils";
 import { testFlowDataStore } from "@sparrow/workspaces/features/testflow-explorer/store";
 import { BehaviorSubject, Observable } from "rxjs";
 import type { WorkspaceUserAgentBaseEnum } from "@sparrow/common/types/workspace/workspace-base";
@@ -64,6 +64,7 @@ import * as Sentry from "@sentry/svelte";
 import { TeamRepository } from "@app/repositories/team.repository";
 import { PlanRepository } from "@app/repositories/plan.repository";
 import { TeamService } from "src/services/team.service";
+import { HttpRequestAuthTypeBaseEnum } from "@sparrow/common/types/workspace/http-request-base";
 
 export class TestflowExplorerPageViewModel {
   private _tab = new BehaviorSubject<Partial<Tab>>({});
@@ -443,10 +444,7 @@ export class TestflowExplorerPageViewModel {
         name: "guestUser",
       });
       if (!guestUser) {
-        const planRxDoc = await this.planRepository.getPlan(
-          teamObject.plan?.id as string,
-        );
-        const planObject = planRxDoc?.toMutableJSON();
+        const planObject = teamObject.plan;
         if (!planObject?.limits?.selectiveTestflowRun?.active) {
           // notifications.error(
           //   "Failed to run from here. please upgrade your plan.",
@@ -475,10 +473,7 @@ export class TestflowExplorerPageViewModel {
         name: "guestUser",
       });
       if (!guestUser) {
-        const planRxDoc = await this.planRepository.getPlan(
-          teamObject.plan?.id as string,
-        );
-        const planObject = planRxDoc?.toMutableJSON();
+        const planObject = teamObject.plan;
         if (!planObject?.limits?.selectiveTestflowRun?.active) {
           // notifications.error(
           //   "Failed to run till here. please upgrade your plan.",
@@ -602,145 +597,151 @@ export class TestflowExplorerPageViewModel {
             );
             if (existingTestFlowData) {
               let resData: TFHistoryAPIResponseStoreType;
-              // if (response.isSuccessful) {
-              const byteLength = new TextEncoder().encode(
-                JSON.stringify(response),
-              ).length;
-              const responseSizeKB = byteLength / 1024;
-              const responseData: TFAPIResponseType = response.data;
-              const responseBody = responseData.body;
-              const formattedHeaders = Object.entries(
-                response?.data?.headers || {},
-              ).map(([key, value]) => ({
-                key,
-                value,
-              })) as TFKeyValueStoreType[];
-              const responseStatus = response?.data?.status;
-              resData = {
-                body: responseBody,
-                headers: formattedHeaders,
-                status: responseStatus,
-                time: duration,
-                size: responseSizeKB,
-                responseContentType:
-                  this._decodeRequest.setResponseContentType(formattedHeaders),
-              };
+              if (response.isSuccessful) {
+                const byteLength = new TextEncoder().encode(
+                  JSON.stringify(response),
+                ).length;
+                const responseSizeKB = byteLength / 1024;
+                const responseData: TFAPIResponseType = response.data;
+                const responseBody = responseData.body;
+                const formattedHeaders = Object.entries(
+                  response?.data?.headers || {},
+                ).map(([key, value]) => ({
+                  key,
+                  value,
+                })) as TFKeyValueStoreType[];
+                const responseStatus = response?.data?.status;
+                resData = {
+                  body: responseBody,
+                  headers: formattedHeaders,
+                  status: responseStatus,
+                  time: duration,
+                  size: responseSizeKB,
+                  responseContentType:
+                    this._decodeRequest.setResponseContentType(
+                      formattedHeaders,
+                    ),
+                };
 
-              if (
-                Number(resData.status.split(" ")[0]) >= 200 &&
-                Number(resData.status.split(" ")[0]) < 300
-              ) {
-                successRequests++;
+                if (
+                  Number(resData.status.split(" ")[0]) >= 200 &&
+                  Number(resData.status.split(" ")[0]) < 300
+                ) {
+                  successRequests++;
+                } else {
+                  failedRequests++;
+                }
+                totalTime += duration;
+                const req = {
+                  method: request?.request?.method as string,
+                  name: request?.name as string,
+                  status: resData.status,
+                  time: new ParseTime().convertMilliseconds(duration),
+                };
+                history.requests.push(req);
+
+                const responseHeader =
+                  this._decodeRequest.setResponseContentType(formattedHeaders);
+
+                const reqParam = {};
+                const params = new URL(decodeData[0]).searchParams;
+
+                for (const [key, value] of params.entries()) {
+                  reqParam[key] = value;
+                }
+
+                const headersObject = Object.fromEntries(
+                  JSON.parse(decodeData[2]).map(({ key, value }) => [
+                    key,
+                    value,
+                  ]),
+                );
+
+                let reqBody;
+                if (decodeData[4] === "application/json") {
+                  // tried to handle js but that is treated as text/plain, skipping that for now
+                  try {
+                    reqBody = JSON.parse(decodeData[3]);
+                  } catch (e) {
+                    reqBody = {};
+                  }
+                } else if (
+                  decodeData[4] === "multipart/form-data" ||
+                  decodeData[4] === "application/x-www-form-urlencoded"
+                ) {
+                  const formDataObject = Object.fromEntries(
+                    JSON.parse(decodeData[3]).map(({ key, value }) => [
+                      key,
+                      value,
+                    ]),
+                  );
+                  reqBody = formDataObject || {};
+                } else {
+                  reqBody = decodeData[3];
+                }
+                requestChainResponse[
+                  "$$" +
+                    element.data.requestData.name.replace(/[^a-zA-Z0-9_]/g, "_")
+                ] = {
+                  response: {
+                    body:
+                      responseHeader === "JSON"
+                        ? JSON.parse(resData.body)
+                        : resData.body,
+                    headers: response?.data?.headers,
+                  },
+                  request: {
+                    headers: headersObject || {},
+                    body: reqBody,
+                    parameters: reqParam || {},
+                  },
+                };
+                requestChainResponse[
+                  "$$" + element.data.blockName.replace(/[^a-zA-Z0-9_]/g, "_")
+                ] = {
+                  response: {
+                    body:
+                      responseHeader === "JSON"
+                        ? JSON.parse(resData.body)
+                        : resData.body,
+                    headers: response?.data?.headers,
+                  },
+                  request: {
+                    headers: headersObject || {},
+                    body: reqBody,
+                    parameters: reqParam || {},
+                  },
+                };
               } else {
+                resData = {
+                  body: response.message,
+                  headers: [],
+                  status: ResponseStatusCode.ERROR,
+                  time: duration,
+                  size: 0,
+                };
                 failedRequests++;
+                totalTime += duration;
+                const req = {
+                  method: request?.request?.method as string,
+                  name: request?.name as string,
+                  status: ResponseStatusCode.ERROR,
+                  time: new ParseTime().convertMilliseconds(duration),
+                };
+                history.requests.push(req);
               }
-              totalTime += duration;
-              const req = {
-                method: request?.request?.method as string,
-                name: request?.name as string,
-                status: resData.status,
-                time: new ParseTime().convertMilliseconds(duration),
-              };
-              history.requests.push(req);
-              // } else {
-              //   resData = {
-              //     body: "",
-              //     headers: [],
-              //     status: ResponseStatusCode.ERROR,
-              //     time: duration,
-              //     size: 0,
-              //   };
-              //   failedRequests++;
-              //   totalTime += duration;
-              //   const req = {
-              //     method: request?.request?.method as string,
-              //     name: request?.name as string,
-              //     status: ResponseStatusCode.ERROR,
-              //     time: new ParseTime().convertMilliseconds(duration),
-              //   };
-              //   history.requests.push(req);
-              // }
               existingTestFlowData.nodes.push({
                 id: element.id,
                 response: resData,
                 request: adaptedRequest,
               });
 
-              const responseHeader =
-                this._decodeRequest.setResponseContentType(formattedHeaders);
-
-              const reqParam = {};
-              const params = new URL(decodeData[0]).searchParams;
-
-              for (const [key, value] of params.entries()) {
-                reqParam[key] = value;
-              }
-
-              const headersObject = Object.fromEntries(
-                JSON.parse(decodeData[2]).map(({ key, value }) => [key, value]),
-              );
-
-              let reqBody;
-              if (decodeData[4] === "application/json") {
-                // tried to handle js but that is treated as text/plain, skipping that for now
-                try {
-                  reqBody = JSON.parse(decodeData[3]);
-                } catch (e) {
-                  reqBody = {};
-                }
-              } else if (
-                decodeData[4] === "multipart/form-data" ||
-                decodeData[4] === "application/x-www-form-urlencoded"
-              ) {
-                const formDataObject = Object.fromEntries(
-                  JSON.parse(decodeData[3]).map(({ key, value }) => [
-                    key,
-                    value,
-                  ]),
-                );
-                reqBody = formDataObject || {};
-              } else {
-                reqBody = decodeData[3];
-              }
-              requestChainResponse[
-                "$$" +
-                  element.data.requestData.name.replace(/[^a-zA-Z0-9_]/g, "_")
-              ] = {
-                response: {
-                  body:
-                    responseHeader === "JSON"
-                      ? JSON.parse(resData.body)
-                      : resData.body,
-                  headers: response?.data?.headers,
-                },
-                request: {
-                  headers: headersObject || {},
-                  body: reqBody,
-                  parameters: reqParam || {},
-                },
-              };
-              requestChainResponse[
-                "$$" + element.data.blockName.replace(/[^a-zA-Z0-9_]/g, "_")
-              ] = {
-                response: {
-                  body:
-                    responseHeader === "JSON"
-                      ? JSON.parse(resData.body)
-                      : resData.body,
-                  headers: response?.data?.headers,
-                },
-                request: {
-                  headers: headersObject || {},
-                  body: reqBody,
-                  parameters: reqParam || {},
-                },
-              };
-
               testFlowDataMap.set(progressiveTab.tabId, existingTestFlowData);
             }
             return testFlowDataMap;
           });
         } catch (error) {
+          console.error(error);
           if (error?.name === "AbortError") {
             break;
           }
@@ -983,7 +984,6 @@ export class TestflowExplorerPageViewModel {
 
     const start = Date.now();
     let resData: TFHistoryAPIResponseStoreType;
-    let status: string;
     let duration = 0;
 
     try {
@@ -1019,14 +1019,13 @@ export class TestflowExplorerPageViewModel {
         };
       } else {
         resData = {
-          body: "",
+          body: response.message,
           headers: [],
           status: ResponseStatusCode.ERROR,
           time: duration,
           size: 0,
         };
       }
-      status = resData.status;
     } catch (error) {
       resData = {
         body: "",
@@ -1035,7 +1034,6 @@ export class TestflowExplorerPageViewModel {
         time: 0,
         size: 0,
       };
-      status = ResponseStatusCode.ERROR;
     }
 
     // Update testFlowDataStore with this single result
@@ -1187,7 +1185,7 @@ export class TestflowExplorerPageViewModel {
       request,
     );
     this.tabRepository.createTab(adaptedRequest);
-    moveNavigation("right");
+    scrollToTab("");
   };
 
   /**
@@ -1586,10 +1584,14 @@ export class TestflowExplorerPageViewModel {
           isSuccessful: true,
         };
       }
+      const baseUrl = await this.constructBaseUrl(
+        this._tab.getValue().path.workspaceId,
+      );
       const response = await this.environmentService.updateEnvironment(
         this._tab.getValue().path.workspaceId,
         environmentVariables.global.id,
         payload,
+        baseUrl,
       );
       if (response.isSuccessful) {
         // updates environment list
@@ -1671,11 +1673,15 @@ export class TestflowExplorerPageViewModel {
           isSuccessful: true,
         };
       }
+      const baseUrl = await this.constructBaseUrl(
+        this._tab.getValue().path.workspaceId,
+      );
       // api response
       const response = await this.environmentService.updateEnvironment(
         this._tab.getValue().path.workspaceId,
         environmentVariables.local.id,
         payload,
+        baseUrl,
       );
       if (response.isSuccessful) {
         // updates environment list
@@ -1723,14 +1729,10 @@ export class TestflowExplorerPageViewModel {
     const response = await this.workspaceRepository.getActiveWorkspaceDoc();
     const teamId = response?._data?.team?.teamId || "";
     const teamData = await this.teamRepository.getTeamDoc(teamId);
-    let teamPlanId;
-    teamPlanId = teamData?._data?.plan?.id;
-    let userPlan;
-    if (teamPlanId) {
-      userPlan = await this.planRepository.getPlan(teamPlanId);
-    }
-    if (userPlan) {
-      return userPlan?.toMutableJSON().limits;
+    const teamDoc = teamData.toMutableJSON();
+
+    if (teamDoc) {
+      return teamDoc.plan?.limits;
     }
   };
 
@@ -1749,12 +1751,9 @@ export class TestflowExplorerPageViewModel {
    */
   public userPlanLimits = async (teamId: string) => {
     const teamDetails = await this.teamRepository.getTeamDoc(teamId);
-    const currentPlan = teamDetails?._data?.plan;
+    const currentPlan = teamDetails?.toMutableJSON()?.plan;
     if (currentPlan) {
-      const planLimits = await this.planRepository.getPlan(
-        currentPlan?.id.toString(),
-      );
-      return planLimits?._data?.limits;
+      return currentPlan.limits;
     }
   };
 
@@ -1789,5 +1788,18 @@ export class TestflowExplorerPageViewModel {
 
   public handleContactSales = async () => {
     window.open(`${constants.MARKETING_URL}/pricing/`);
+  };
+
+  /**
+   * @description - This function will convert the data of auth into key value Format.
+   */
+  public parseAuthHeader = (
+    selectAuthHeader?: HttpRequestAuthTypeBaseEnum,
+    authContent: any,
+  ): { key: string; value: string } | undefined => {
+    if (selectAuthHeader) {
+      const response = new ReduceAuthHeader(selectAuthHeader, authContent);
+      return response.getValue();
+    }
   };
 }
